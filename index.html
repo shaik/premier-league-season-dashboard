@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Premier League Season Dashboard</title>
+    <meta
+      name="description"
+      content="Static Premier League season dashboard built from the Football-Data E0.csv file."
+    >
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <noscript>
+      <div class="noscript">This dashboard needs JavaScript to parse the CSV and draw charts.</div>
+    </noscript>
+
+    <div class="app-shell">
+      <header class="top-band">
+        <div class="hero-copy">
+          <p class="eyebrow">Premier League 2025-26 - Football-Data CSV</p>
+          <h1>Season race dashboard</h1>
+          <p class="intro">
+            Track league position, scoring trends, defensive form, team momentum, and player production.
+          </p>
+        </div>
+        <div class="season-kpis" id="seasonKpis" aria-live="polite">
+          <div class="kpi-card is-loading">Loading CSV...</div>
+        </div>
+      </header>
+
+      <nav class="view-tabs" aria-label="Dashboard views">
+        <button class="tab-button is-active" type="button" data-tab="season" aria-controls="seasonPanel">
+          Season
+        </button>
+        <button class="tab-button tab-button-feature" type="button" data-tab="players" aria-controls="playersPanel">
+          <span>Players</span>
+          <span class="tab-badge">Player stats</span>
+        </button>
+      </nav>
+
+      <main class="dashboard-layout tab-panel is-active" id="seasonPanel" data-tab-panel="season">
+        <aside class="control-panel" aria-label="Dashboard controls">
+          <section class="panel-block">
+            <div class="section-heading">
+              <span class="section-kicker">Focus</span>
+              <h2>Teams</h2>
+            </div>
+            <label class="field-label" for="teamSearch">Filter teams</label>
+            <input id="teamSearch" class="search-input" type="search" placeholder="Search club name">
+            <div class="quick-actions" aria-label="Team selection shortcuts">
+              <button class="small-button" id="selectTopTeams" type="button">Top 6</button>
+              <button class="small-button" id="selectAllTeams" type="button">All</button>
+              <button class="small-button" id="clearTeams" type="button">Clear</button>
+            </div>
+            <div id="teamSelector" class="team-selector" role="group" aria-label="Team selector"></div>
+          </section>
+
+          <section class="panel-block">
+            <div class="section-heading">
+              <span class="section-kicker">Window</span>
+              <h2>Round cutoff</h2>
+            </div>
+            <label class="field-label" for="roundRange">Show data through <span id="roundLabel">round</span></label>
+            <input id="roundRange" class="range-input" type="range" min="1" max="1" value="1">
+            <div class="range-meta">
+              <span>Round 1</span>
+              <span id="roundMaxLabel">Round 1</span>
+            </div>
+          </section>
+
+          <section class="panel-block">
+            <div class="section-heading">
+              <span class="section-kicker">Trend</span>
+              <h2>Metric</h2>
+            </div>
+            <label class="field-label" for="metricSelect">Compare selected teams by</label>
+            <select id="metricSelect" class="metric-select">
+              <option value="cumulativePoints">Cumulative points</option>
+              <option value="weeklyPoints">Points per round</option>
+              <option value="goalDifference">Goal difference</option>
+              <option value="shotsFor">Shots per round</option>
+              <option value="shotAccuracy">Shot accuracy</option>
+              <option value="discipline">Discipline points</option>
+            </select>
+            <p class="control-note">
+              Selected teams use stronger colors. In the position chart, every other club is kept as context.
+            </p>
+          </section>
+        </aside>
+
+        <section class="content-column">
+          <section class="chart-panel primary-panel">
+            <div class="chart-header">
+              <div>
+                <p class="section-kicker">League race</p>
+                <h2>Position by round</h2>
+              </div>
+              <p class="chart-caption">Click a line or team chip to change the focus.</p>
+            </div>
+            <div class="chart-frame tall">
+              <svg id="positionChart" role="img" aria-label="Premier League table position by round"></svg>
+            </div>
+            <div id="positionLegend" class="legend-strip" aria-label="Selected team legend"></div>
+          </section>
+
+          <div class="chart-grid">
+            <section class="chart-panel">
+              <div class="chart-header compact">
+                <div>
+                  <p class="section-kicker">Attack</p>
+                  <h2>Goals scored per round</h2>
+                </div>
+              </div>
+              <div class="chart-frame">
+                <svg id="goalsForChart" role="img" aria-label="Goals scored per round"></svg>
+              </div>
+            </section>
+
+            <section class="chart-panel">
+              <div class="chart-header compact">
+                <div>
+                  <p class="section-kicker">Defense</p>
+                  <h2>Goals conceded per round</h2>
+                </div>
+              </div>
+              <div class="chart-frame">
+                <svg id="goalsAgainstChart" role="img" aria-label="Goals conceded per round"></svg>
+              </div>
+            </section>
+          </div>
+
+          <div class="chart-grid">
+            <section class="chart-panel">
+              <div class="chart-header compact">
+                <div>
+                  <p class="section-kicker">Momentum</p>
+                  <h2 id="metricChartTitle">Cumulative points</h2>
+                </div>
+              </div>
+              <div class="chart-frame">
+                <svg id="metricChart" role="img" aria-label="Selected team trend comparison"></svg>
+              </div>
+            </section>
+
+            <section class="chart-panel">
+              <div class="chart-header compact">
+                <div>
+                  <p class="section-kicker">Selected teams</p>
+                  <h2>Profile</h2>
+                </div>
+              </div>
+              <div id="teamProfile" class="team-profile"></div>
+            </section>
+          </div>
+
+          <section class="chart-panel">
+            <div class="chart-header compact">
+              <div>
+                <p class="section-kicker">Team map</p>
+                <h2>Attack vs defense</h2>
+              </div>
+              <p class="chart-caption">Goals for per match against goals conceded per match.</p>
+            </div>
+            <div class="chart-frame">
+              <svg id="teamMapChart" role="img" aria-label="Team attack versus defense scatter plot"></svg>
+            </div>
+          </section>
+
+          <section class="chart-panel">
+            <div class="chart-header compact">
+              <div>
+                <p class="section-kicker">Form matrix</p>
+                <h2>Round-by-round results</h2>
+              </div>
+              <p class="chart-caption">W/D/L cells keep the result readable without relying on color alone.</p>
+            </div>
+            <div id="formHeatmap" class="form-heatmap" aria-label="Round by round team form heatmap"></div>
+          </section>
+
+          <section class="chart-panel">
+            <div class="chart-header compact">
+              <div>
+                <p class="section-kicker">Match state</p>
+                <h2>Halftime to fulltime swings</h2>
+              </div>
+              <p class="chart-caption">Comebacks, rescued draws, held leads, and blown leads from completed matches.</p>
+            </div>
+            <div class="chart-frame">
+              <svg id="htftChart" role="img" aria-label="Halftime to fulltime swing chart"></svg>
+            </div>
+          </section>
+
+          <section class="chart-panel">
+            <div class="chart-header compact">
+              <div>
+                <p class="section-kicker">Table</p>
+                <h2 id="standingsTitle">Standings</h2>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="standings-table">
+                <thead>
+                  <tr>
+                    <th scope="col" data-sort="position" aria-sort="ascending">
+                      <button class="sort-button" type="button">Pos <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-sort="team">
+                      <button class="sort-button" type="button">Club <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-sort="played">
+                      <button class="sort-button" type="button">P <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-sort="wins">
+                      <button class="sort-button" type="button">W <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-sort="draws">
+                      <button class="sort-button" type="button">D <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-sort="losses">
+                      <button class="sort-button" type="button">L <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-sort="gf">
+                      <button class="sort-button" type="button">GF <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-sort="ga">
+                      <button class="sort-button" type="button">GA <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-sort="gd">
+                      <button class="sort-button" type="button">GD <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-sort="points">
+                      <button class="sort-button" type="button">Pts <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col">Trend</th>
+                    <th scope="col">Form</th>
+                  </tr>
+                </thead>
+                <tbody id="standingsBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </main>
+
+      <main class="dashboard-layout tab-panel" id="playersPanel" data-tab-panel="players" hidden>
+        <aside class="control-panel" aria-label="Player dashboard controls">
+          <section class="panel-block">
+            <div class="section-heading">
+              <span class="section-kicker">Scope</span>
+              <h2>Players</h2>
+            </div>
+            <label class="field-label" for="playerTeamFilter">Team</label>
+            <select id="playerTeamFilter" class="metric-select">
+              <option value="all">All teams</option>
+            </select>
+
+            <label class="field-label" for="playerPositionFilter">Position</label>
+            <select id="playerPositionFilter" class="metric-select">
+              <option value="all">All positions</option>
+              <option value="F">Forwards</option>
+              <option value="M">Midfielders</option>
+              <option value="D">Defenders</option>
+              <option value="G">Goalkeepers</option>
+            </select>
+
+            <label class="field-label" for="playerSearch">Filter players</label>
+            <input id="playerSearch" class="search-input" type="search" placeholder="Search player name">
+          </section>
+
+          <section class="panel-block">
+            <div class="section-heading">
+              <span class="section-kicker">Compare</span>
+              <h2>Metric</h2>
+            </div>
+            <label class="field-label" for="playerMetricSelect">Rank and compare by</label>
+            <select id="playerMetricSelect" class="metric-select">
+              <option value="goalsAssistsSum">Goals + assists</option>
+              <option value="goals">Goals</option>
+              <option value="assists">Assists</option>
+              <option value="expectedGoals">Expected goals</option>
+              <option value="expectedAssists">Expected assists</option>
+              <option value="rating">Average rating</option>
+              <option value="minutesPlayed">Minutes</option>
+              <option value="totalShots">Shots</option>
+              <option value="keyPasses">Key passes</option>
+              <option value="tacklesWon">Tackles won</option>
+              <option value="saves">Saves</option>
+            </select>
+            <div class="quick-actions" aria-label="Player selection shortcuts">
+              <button class="small-button" id="selectTopPlayers" type="button">Top 8</button>
+              <button class="small-button" id="selectVisiblePlayers" type="button">Visible</button>
+              <button class="small-button" id="clearPlayers" type="button">Clear</button>
+            </div>
+            <p class="control-note">
+              Use Team = All teams for cross-team comparison, or pick one club to compare inside a squad.
+            </p>
+          </section>
+
+          <section class="panel-block">
+            <div class="section-heading">
+              <span class="section-kicker">Selected</span>
+              <h2>Player list</h2>
+            </div>
+            <div id="playerSelector" class="player-selector" role="group" aria-label="Player selector"></div>
+          </section>
+        </aside>
+
+        <section class="content-column">
+          <section class="player-kpis" id="playerKpis" aria-live="polite">
+            <div class="kpi-card is-loading">Loading player CSV...</div>
+          </section>
+
+          <div class="chart-grid">
+            <section class="chart-panel">
+              <div class="chart-header compact">
+                <div>
+                  <p class="section-kicker">Finishing</p>
+                  <h2>Goals vs expected goals</h2>
+                </div>
+              </div>
+              <div class="chart-frame">
+                <svg id="playerScatterChart" role="img" aria-label="Player goals against expected goals scatter plot"></svg>
+              </div>
+            </section>
+
+            <section class="chart-panel">
+              <div class="chart-header compact">
+                <div>
+                  <p class="section-kicker">Leaders</p>
+                  <h2 id="playerBarTitle">Top players</h2>
+                </div>
+              </div>
+              <div class="chart-frame">
+                <svg id="playerBarChart" role="img" aria-label="Top player ranking bar chart"></svg>
+              </div>
+            </section>
+          </div>
+
+          <section class="chart-panel">
+            <div class="chart-header compact">
+              <div>
+                <p class="section-kicker">Comparison</p>
+                <h2>Selected player profiles</h2>
+              </div>
+            </div>
+            <div id="playerComparison" class="player-comparison"></div>
+          </section>
+
+          <section class="chart-panel">
+            <div class="chart-header compact">
+              <div>
+                <p class="section-kicker">Player table</p>
+                <h2 id="playerTableTitle">Players</h2>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="standings-table player-table">
+                <thead>
+                  <tr>
+                    <th scope="col" data-player-sort="name" aria-sort="none">
+                      <button class="sort-button" type="button">Player <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="team" aria-sort="none">
+                      <button class="sort-button" type="button">Team <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="position" aria-sort="none">
+                      <button class="sort-button" type="button">Pos <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="appearances" aria-sort="none">
+                      <button class="sort-button" type="button">Apps <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="minutesPlayed" aria-sort="none">
+                      <button class="sort-button" type="button">Min <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="goals" aria-sort="none">
+                      <button class="sort-button" type="button">G <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="assists" aria-sort="none">
+                      <button class="sort-button" type="button">A <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="expectedGoals" aria-sort="none">
+                      <button class="sort-button" type="button">xG <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="expectedAssists" aria-sort="none">
+                      <button class="sort-button" type="button">xA <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="rating" aria-sort="none">
+                      <button class="sort-button" type="button">Rating <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="goalsAssistsPer90" aria-sort="none">
+                      <button class="sort-button" type="button">G+A/90 <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                    <th scope="col" data-player-sort="metric" aria-sort="descending">
+                      <button class="sort-button" type="button"><span id="playerMetricColumn">Metric</span> <span class="sort-arrow" aria-hidden="true"></span></button>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="playerTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="tooltip" class="tooltip" hidden></div>
+    <div id="loadError" class="load-error" hidden></div>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>
