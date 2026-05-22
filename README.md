@@ -37,3 +37,8 @@ The dashboard computes round-by-round standings from completed matches in `E0.cs
 Player visuals use the matchday-35 snapshot because it has stable player IDs and clean UTF-8 names. Team names in that player file are normalized to the shorter `E0.csv` names used by the season dashboard.
 
 The season tab also derives form heatmaps, position sparklines, attack/defense scatter, and halftime-to-fulltime swing counts directly from `E0.csv`.
+
+## Data Credits
+
+- [Football-Data.co.uk](https://www.football-data.co.uk/)
+- [TheSportsDB English Premier League](https://www.thesportsdb.com/league/4328-English-Premier-League)
