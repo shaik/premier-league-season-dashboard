@@ -3,6 +3,14 @@
 
   const CSV_FILE = "E0.csv";
   const PLAYER_CSV_FILE = "premier_league_complete_stats_until35thGameDayOnSeason2025-26.csv";
+  const HISTORY_FILES = Array.from({ length: 25 }, (_, index) => {
+    const year = 2000 + index;
+    return {
+      year,
+      file: `pl${year}.csv`,
+      label: `${year}-${String((year + 1) % 100).padStart(2, "0")}`,
+    };
+  });
   const CHART = {
     width: 1000,
     height: 360,
@@ -23,6 +31,7 @@
     Everton: "#1c52a3",
     Fulham: "#2a2f35",
     Leeds: "#b58a00",
+    Leicester: "#0053a0",
     Liverpool: "#7f1d1d",
     "Man City": "#4f97c7",
     "Man United": "#f97316",
@@ -32,6 +41,25 @@
     Tottenham: "#132257",
     "West Ham": "#7a263a",
     Wolves: "#c88b00",
+    Blackburn: "#1d4ed8",
+    Bolton: "#5b7083",
+    Cardiff: "#2563eb",
+    Charlton: "#b91c1c",
+    Coventry: "#38a7d8",
+    Derby: "#44403c",
+    Hull: "#d97706",
+    Ipswich: "#2563eb",
+    Middlesbrough: "#dc2626",
+    Norwich: "#facc15",
+    Portsmouth: "#2563eb",
+    QPR: "#1d4ed8",
+    Reading: "#1e40af",
+    Sheffield: "#be123c",
+    Southampton: "#dc2626",
+    Stoke: "#b91c1c",
+    Swansea: "#334155",
+    Watford: "#f59e0b",
+    Wigan: "#2563eb",
   };
 
   const FALLBACK_COLORS = [
@@ -45,6 +73,12 @@
     "#7c3aed",
     "#be123c",
     "#0e7490",
+    "#a16207",
+    "#0891b2",
+    "#4d7c0f",
+    "#c2410c",
+    "#4338ca",
+    "#be185d",
   ];
 
   const METRICS = {
@@ -126,9 +160,72 @@
     saves: { label: "Saves", formatter: (value) => value.toFixed(0) },
   };
 
+  const HISTORY_METRICS = {
+    goalsPerMatch: {
+      label: "Goals per match",
+      formatter: (value) => value.toFixed(2),
+      accessor: (season) => season.goalsPerMatch,
+    },
+    homeWinRate: {
+      label: "Home win rate",
+      formatter: (value) => `${value.toFixed(0)}%`,
+      accessor: (season) => season.homeWinRate,
+    },
+    drawRate: {
+      label: "Draw rate",
+      formatter: (value) => `${value.toFixed(0)}%`,
+      accessor: (season) => season.drawRate,
+    },
+    awayWinRate: {
+      label: "Away win rate",
+      formatter: (value) => `${value.toFixed(0)}%`,
+      accessor: (season) => season.awayWinRate,
+    },
+    cardsPerMatch: {
+      label: "Cards per match",
+      formatter: (value) => value.toFixed(2),
+      accessor: (season) => season.cardsPerMatch,
+    },
+    championPoints: {
+      label: "Champion points",
+      formatter: (value) => value.toFixed(0),
+      accessor: (season) => season.championPoints,
+    },
+    titleMargin: {
+      label: "Title margin",
+      formatter: (value) => value.toFixed(0),
+      accessor: (season) => season.titleMargin,
+    },
+    topFourCutoff: {
+      label: "Top-four cutoff",
+      formatter: (value) => value.toFixed(0),
+      accessor: (season) => season.topFourCutoff,
+    },
+    survivalPoints: {
+      label: "17th-place points",
+      formatter: (value) => value.toFixed(0),
+      accessor: (season) => season.survivalPoints,
+    },
+    avgAttendance: {
+      label: "Average attendance",
+      formatter: (value) => (value ? Math.round(value).toLocaleString() : "n/a"),
+      accessor: (season) => season.avgAttendance,
+    },
+  };
+
+  const HISTORY_TEAM_METRICS = {
+    position: { label: "Final position", formatter: (value) => `#${value.toFixed(0)}` },
+    points: { label: "Points", formatter: (value) => value.toFixed(0) },
+    gd: { label: "Goal difference", formatter: signed },
+    gf: { label: "Goals scored", formatter: (value) => value.toFixed(0) },
+    ga: { label: "Goals conceded", formatter: (value) => value.toFixed(0) },
+    pointsPerMatch: { label: "Points per match", formatter: (value) => value.toFixed(2) },
+  };
+
   const state = {
     data: null,
     players: null,
+    history: null,
     activeTab: "season",
     selectedTeams: new Set(),
     teamSearch: "",
@@ -143,6 +240,13 @@
     playerMetric: "goalsAssistsSum",
     playerTableSort: { key: "metric", direction: "desc" },
     selectedPlayers: new Set(),
+    historyStart: 2000,
+    historyEnd: 2024,
+    historyMetric: "goalsPerMatch",
+    historyTeam: "Arsenal",
+    historyTeamMetric: "position",
+    historyCompareA: 2024,
+    historyCompareB: 2003,
   };
 
   const els = {};
@@ -154,6 +258,7 @@
       if (!state.data) return;
       renderCharts();
       if (state.players) renderPlayerCharts();
+      if (state.history) renderHistoryCharts();
     }, 120),
   );
 
@@ -162,9 +267,10 @@
     bindControls();
 
     try {
-      const [matchResponse, playerResponse] = await Promise.all([
+      const [matchResponse, playerResponse, ...historyResponses] = await Promise.all([
         fetch(CSV_FILE, { cache: "no-store" }),
         fetch(PLAYER_CSV_FILE, { cache: "no-store" }),
+        ...HISTORY_FILES.map((source) => fetch(source.file, { cache: "no-store" })),
       ]);
       if (!matchResponse.ok) {
         throw new Error(`${CSV_FILE} request failed with ${matchResponse.status}`);
@@ -172,18 +278,34 @@
       if (!playerResponse.ok) {
         throw new Error(`${PLAYER_CSV_FILE} request failed with ${playerResponse.status}`);
       }
+      const failedHistory = historyResponses.find((response) => !response.ok);
+      if (failedHistory) {
+        throw new Error(`Historical CSV request failed with ${failedHistory.status}`);
+      }
       const csvText = await matchResponse.text();
       const playerCsvText = await playerResponse.text();
+      const historyCsvTexts = await Promise.all(historyResponses.map((response) => response.text()));
       const rows = parseCSV(csvText);
       const playerRows = parseCSV(playerCsvText);
+      const historyItems = HISTORY_FILES.map((source, index) => ({
+        ...source,
+        rows: parseCSV(historyCsvTexts[index]),
+      }));
       const data = buildSeasonModel(rows);
       const players = buildPlayerModel(playerRows, data.teams);
+      const history = buildHistoryModel(historyItems);
       state.data = data;
       state.players = players;
+      state.history = history;
       state.roundLimit = data.maxRound;
       state.selectedTeams = new Set(data.teams.includes("Arsenal") ? ["Arsenal"] : [data.latestStandings[0].team]);
       state.selectedPlayers = new Set(players.topPlayers.slice(0, 8).map((player) => player.id));
-      hydrateControls(data, players);
+      state.historyStart = history.minYear;
+      state.historyEnd = history.maxYear;
+      state.historyTeam = history.teams.includes("Arsenal") ? "Arsenal" : history.teams[0];
+      state.historyCompareA = history.maxYear;
+      state.historyCompareB = history.byYear.has(2003) ? 2003 : history.minYear;
+      hydrateControls(data, players, history);
       renderAll();
     } catch (error) {
       showLoadError(error);
@@ -235,6 +357,21 @@
     els.playerMetricColumn = document.getElementById("playerMetricColumn");
     els.playerTable = document.querySelector(".player-table");
     els.playerTableBody = document.getElementById("playerTableBody");
+    els.historyStartSeason = document.getElementById("historyStartSeason");
+    els.historyEndSeason = document.getElementById("historyEndSeason");
+    els.historyMetricSelect = document.getElementById("historyMetricSelect");
+    els.historyTeamSelect = document.getElementById("historyTeamSelect");
+    els.historyTeamMetricSelect = document.getElementById("historyTeamMetricSelect");
+    els.historyCompareA = document.getElementById("historyCompareA");
+    els.historyCompareB = document.getElementById("historyCompareB");
+    els.historyKpis = document.getElementById("historyKpis");
+    els.historyMetricTitle = document.getElementById("historyMetricTitle");
+    els.historyMetricChart = document.getElementById("historyMetricChart");
+    els.historyTeamChartTitle = document.getElementById("historyTeamChartTitle");
+    els.historyTeamChart = document.getElementById("historyTeamChart");
+    els.titleWinnersChart = document.getElementById("titleWinnersChart");
+    els.historyComparison = document.getElementById("historyComparison");
+    els.championsTimeline = document.getElementById("championsTimeline");
     els.tooltip = document.getElementById("tooltip");
     els.loadError = document.getElementById("loadError");
   }
@@ -342,11 +479,50 @@
       togglePlayer(row.dataset.playerId);
     });
 
+    els.historyStartSeason.addEventListener("change", (event) => {
+      state.historyStart = Number(event.target.value);
+      if (state.historyStart > state.historyEnd) state.historyEnd = state.historyStart;
+      syncHistorySeasonControls();
+      renderHistoryDashboard();
+    });
+
+    els.historyEndSeason.addEventListener("change", (event) => {
+      state.historyEnd = Number(event.target.value);
+      if (state.historyEnd < state.historyStart) state.historyStart = state.historyEnd;
+      syncHistorySeasonControls();
+      renderHistoryDashboard();
+    });
+
+    els.historyMetricSelect.addEventListener("change", (event) => {
+      state.historyMetric = event.target.value;
+      renderHistoryDashboard();
+    });
+
+    els.historyTeamSelect.addEventListener("change", (event) => {
+      state.historyTeam = event.target.value;
+      renderHistoryDashboard();
+    });
+
+    els.historyTeamMetricSelect.addEventListener("change", (event) => {
+      state.historyTeamMetric = event.target.value;
+      renderHistoryDashboard();
+    });
+
+    els.historyCompareA.addEventListener("change", (event) => {
+      state.historyCompareA = Number(event.target.value);
+      renderHistoryComparison();
+    });
+
+    els.historyCompareB.addEventListener("change", (event) => {
+      state.historyCompareB = Number(event.target.value);
+      renderHistoryComparison();
+    });
+
     document.addEventListener("pointermove", moveTooltip);
     document.addEventListener("pointerleave", hideTooltip);
   }
 
-  function hydrateControls(data, players) {
+  function hydrateControls(data, players, history) {
     els.roundRange.min = "1";
     els.roundRange.max = String(data.maxRound);
     els.roundRange.value = String(data.maxRound);
@@ -361,6 +537,29 @@
     ].join("");
     els.playerTeamFilter.value = state.playerTeam;
     els.playerPositionFilter.value = state.playerPosition;
+    hydrateHistoryControls(history);
+  }
+
+  function hydrateHistoryControls(history) {
+    const seasonOptions = history.seasons.map((season) => seasonOption(season)).join("");
+    els.historyStartSeason.innerHTML = seasonOptions;
+    els.historyEndSeason.innerHTML = seasonOptions;
+    els.historyCompareA.innerHTML = seasonOptions;
+    els.historyCompareB.innerHTML = seasonOptions;
+    els.historyMetricSelect.value = state.historyMetric;
+    els.historyTeamMetricSelect.value = state.historyTeamMetric;
+    els.historyTeamSelect.innerHTML = history.teams
+      .map((team) => `<option value="${escapeAttr(team)}">${escapeHTML(team)}</option>`)
+      .join("");
+    els.historyTeamSelect.value = state.historyTeam;
+    els.historyCompareA.value = String(state.historyCompareA);
+    els.historyCompareB.value = String(state.historyCompareB);
+    syncHistorySeasonControls();
+  }
+
+  function syncHistorySeasonControls() {
+    els.historyStartSeason.value = String(state.historyStart);
+    els.historyEndSeason.value = String(state.historyEnd);
   }
 
   function setActiveTab(tabName) {
@@ -378,6 +577,8 @@
     window.requestAnimationFrame(() => {
       if (tabName === "players") {
         renderPlayerDashboard();
+      } else if (tabName === "history") {
+        renderHistoryDashboard();
       } else {
         renderCharts();
       }
@@ -582,6 +783,151 @@
     };
   }
 
+  function buildHistoryModel(items) {
+    const seasons = items
+      .map(buildHistorySeason)
+      .filter((season) => season.matches.length)
+      .sort((a, b) => a.year - b.year);
+    const teams = Array.from(new Set(seasons.flatMap((season) => season.teams))).sort((a, b) => a.localeCompare(b));
+    const byYear = new Map(seasons.map((season) => [season.year, season]));
+
+    return {
+      seasons,
+      teams,
+      byYear,
+      minYear: seasons[0]?.year || HISTORY_FILES[0].year,
+      maxYear: seasons[seasons.length - 1]?.year || HISTORY_FILES[HISTORY_FILES.length - 1].year,
+    };
+  }
+
+  function buildHistorySeason(source) {
+    const matches = source.rows
+      .filter((row) => row.HomeTeam && row.AwayTeam && row.FTHG !== "" && row.FTAG !== "")
+      .map((row) => {
+        const date = parseDate(row.Date, row.Time);
+        return {
+          ...row,
+          date,
+          sortKey: date.getTime(),
+          homeGoals: toNumber(row.FTHG),
+          awayGoals: toNumber(row.FTAG),
+          homeHalfGoals: toNumber(row.HTHG),
+          awayHalfGoals: toNumber(row.HTAG),
+          homeShots: toNumber(row.HS),
+          awayShots: toNumber(row.AS),
+          homeShotsOnTarget: toNumber(row.HST),
+          awayShotsOnTarget: toNumber(row.AST),
+          homeCorners: toNumber(row.HC),
+          awayCorners: toNumber(row.AC),
+          homeYellow: toNumber(row.HY),
+          awayYellow: toNumber(row.AY),
+          homeRed: toNumber(row.HR),
+          awayRed: toNumber(row.AR),
+          attendance: toNumber(row.Attendance),
+        };
+      })
+      .sort((a, b) => a.sortKey - b.sortKey || a.originalIndex - b.originalIndex);
+
+    const teams = Array.from(new Set(matches.flatMap((match) => [match.HomeTeam, match.AwayTeam]))).sort(
+      (a, b) => a.localeCompare(b),
+    );
+    const table = new Map(teams.map((team) => [team, emptyCumulative(team)]));
+    matches.forEach((match) => applyHistoryMatch(match, table));
+
+    const standings = rankTable(Array.from(table.values())).map((row) => ({
+      ...row,
+      pointsPerMatch: row.played ? row.points / row.played : 0,
+    }));
+    const byTeam = new Map(standings.map((row) => [row.team, row]));
+    const totalGoals = matches.reduce((sum, match) => sum + match.homeGoals + match.awayGoals, 0);
+    const totalCards = matches.reduce(
+      (sum, match) => sum + match.homeYellow + match.awayYellow + match.homeRed + match.awayRed,
+      0,
+    );
+    const attendanceValues = matches.map((match) => match.attendance).filter((value) => value > 0);
+    const homeWins = matches.filter((match) => match.homeGoals > match.awayGoals).length;
+    const draws = matches.filter((match) => match.homeGoals === match.awayGoals).length;
+    const awayWins = matches.filter((match) => match.homeGoals < match.awayGoals).length;
+    const champion = standings[0] || emptyCumulative("n/a");
+    const runnerUp = standings[1] || emptyCumulative("n/a");
+    const matchCount = Math.max(1, matches.length);
+
+    return {
+      year: source.year,
+      label: source.label,
+      file: source.file,
+      matches,
+      matchCount: matches.length,
+      teams,
+      standings,
+      byTeam,
+      champion,
+      runnerUp,
+      championPoints: champion.points || 0,
+      titleMargin: Math.max(0, (champion.points || 0) - (runnerUp.points || 0)),
+      topFourCutoff: standings[3]?.points || 0,
+      survivalPoints: standings[16]?.points || 0,
+      totalGoals,
+      goalsPerMatch: totalGoals / matchCount,
+      homeWinRate: (homeWins / matchCount) * 100,
+      drawRate: (draws / matchCount) * 100,
+      awayWinRate: (awayWins / matchCount) * 100,
+      cardsPerMatch: totalCards / matchCount,
+      avgAttendance: attendanceValues.length ? average(attendanceValues) : 0,
+    };
+  }
+
+  function applyHistoryMatch(match, table) {
+    const home = table.get(match.HomeTeam);
+    const away = table.get(match.AwayTeam);
+
+    addTeamMatch(home, {
+      gf: match.homeGoals,
+      ga: match.awayGoals,
+      shotsFor: match.homeShots,
+      shotsAgainst: match.awayShots,
+      sotFor: match.homeShotsOnTarget,
+      sotAgainst: match.awayShotsOnTarget,
+      cornersFor: match.homeCorners,
+      cornersAgainst: match.awayCorners,
+      yellow: match.homeYellow,
+      red: match.homeRed,
+    });
+    addTeamMatch(away, {
+      gf: match.awayGoals,
+      ga: match.homeGoals,
+      shotsFor: match.awayShots,
+      shotsAgainst: match.homeShots,
+      sotFor: match.awayShotsOnTarget,
+      sotAgainst: match.homeShotsOnTarget,
+      cornersFor: match.awayCorners,
+      cornersAgainst: match.homeCorners,
+      yellow: match.awayYellow,
+      red: match.awayRed,
+    });
+
+    if (match.homeGoals > match.awayGoals) {
+      home.wins += 1;
+      away.losses += 1;
+      home.points += 3;
+      home.form.push("W");
+      away.form.push("L");
+    } else if (match.homeGoals < match.awayGoals) {
+      away.wins += 1;
+      home.losses += 1;
+      away.points += 3;
+      away.form.push("W");
+      home.form.push("L");
+    } else {
+      home.draws += 1;
+      away.draws += 1;
+      home.points += 1;
+      away.points += 1;
+      home.form.push("D");
+      away.form.push("D");
+    }
+  }
+
   function emptyCumulative(team) {
     return {
       team,
@@ -761,6 +1107,7 @@
     renderTeamProfile();
     renderStandings();
     renderPlayerDashboard();
+    renderHistoryDashboard();
     updateRoundControls();
   }
 
@@ -796,6 +1143,314 @@
     if (!state.players) return;
     renderPlayerScatterChart();
     renderPlayerBarChart();
+  }
+
+  function renderHistoryDashboard() {
+    if (!state.history) return;
+    renderHistoryKpis();
+    renderHistoryCharts();
+    renderHistoryComparison();
+    renderChampionsTimeline();
+  }
+
+  function renderHistoryCharts() {
+    if (!state.history) return;
+    renderHistoryMetricChart();
+    renderHistoryTeamChart();
+    renderTitleWinnersChart();
+  }
+
+  function renderHistoryKpis() {
+    const seasons = historySeasonsInRange();
+    if (!seasons.length) {
+      els.historyKpis.innerHTML = `<div class="kpi-card"><div class="empty-state">No seasons in this range.</div></div>`;
+      return;
+    }
+
+    const titleLeader = historyTitleCounts(seasons)[0];
+    const highestScoring = [...seasons].sort((a, b) => b.goalsPerMatch - a.goalsPerMatch)[0];
+    const tightestRace = [...seasons].sort((a, b) => a.titleMargin - b.titleMargin || b.championPoints - a.championPoints)[0];
+    const averageGoals = average(seasons.map((season) => season.goalsPerMatch));
+    const cards = [
+      {
+        label: "Seasons loaded",
+        value: seasons.length,
+        detail: `${seasons[0].label} through ${seasons[seasons.length - 1].label}`,
+      },
+      {
+        label: "Most titles",
+        value: titleLeader ? titleLeader.team : "n/a",
+        detail: titleLeader ? `${titleLeader.count} titles in selected era` : "No champion data",
+      },
+      {
+        label: "Highest scoring",
+        value: highestScoring.label,
+        detail: `${highestScoring.goalsPerMatch.toFixed(2)} goals per match`,
+      },
+      {
+        label: "Tightest race",
+        value: tightestRace.label,
+        detail: `${tightestRace.champion.team} won by ${tightestRace.titleMargin} pts · era avg ${averageGoals.toFixed(2)} G/m`,
+      },
+    ];
+
+    els.historyKpis.innerHTML = cards
+      .map(
+        (card) => `
+          <div class="kpi-card">
+            <div class="kpi-label">${escapeHTML(card.label)}</div>
+            <div class="kpi-value">${escapeHTML(String(card.value))}</div>
+            <div class="kpi-detail">${escapeHTML(card.detail)}</div>
+          </div>
+        `,
+      )
+      .join("");
+  }
+
+  function renderHistoryMetricChart() {
+    const svg = els.historyMetricChart;
+    const metric = HISTORY_METRICS[state.historyMetric];
+    const seasons = historySeasonsInRange();
+    const points = seasons
+      .map((season) => ({ season, year: season.year, value: metric.accessor(season) }))
+      .filter((point) => Number.isFinite(point.value) && (state.historyMetric !== "avgAttendance" || point.value > 0));
+    els.historyMetricTitle.textContent = metric.label;
+
+    const { width, height } = chartBox(svg, CHART.width, CHART.height);
+    const margin = { top: 24, right: 26, bottom: 46, left: state.historyMetric === "avgAttendance" ? 74 : 50 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    clearSVG(svg, width, height);
+    if (points.length < 2) {
+      appendText(svg, "No historical values for this metric in the selected era.", width / 2, height / 2, "axis-label", "middle");
+      return;
+    }
+
+    const yearMin = seasons[0].year;
+    const yearMax = seasons[seasons.length - 1].year;
+    const yScaleInfo = niceLinearScale(Math.min(0, ...points.map((point) => point.value)), Math.max(...points.map((point) => point.value)));
+    drawGrid(svg, {
+      width,
+      height,
+      margin,
+      xTicks: historyYearTicks(seasons),
+      yTicks: yScaleInfo.ticks,
+      xScale: (year) => xScaleValue(year, yearMin, yearMax, margin.left, innerWidth),
+      yScale: (value) => yScaleValue(value, yScaleInfo.min, yScaleInfo.max, margin.top, innerHeight),
+      yFormatter: metric.formatter,
+    });
+    appendText(svg, "Season start year", width / 2, height - 10, "axis-label", "middle");
+    appendText(svg, metric.label, 14, margin.top + innerHeight / 2, "axis-label", "middle", -90);
+
+    const path = pathFromSeries(points, (point) => xScaleValue(point.year, yearMin, yearMax, margin.left, innerWidth), (point) =>
+      yScaleValue(point.value, yScaleInfo.min, yScaleInfo.max, margin.top, innerHeight),
+    );
+    svg.append(
+      svgEl("path", {
+        class: "chart-line",
+        d: path,
+        stroke: "#0f766e",
+        "stroke-width": 3,
+        opacity: 0.94,
+      }),
+    );
+
+    const avg = average(points.map((point) => point.value));
+    const avgY = yScaleValue(avg, yScaleInfo.min, yScaleInfo.max, margin.top, innerHeight);
+    svg.append(
+      svgEl("line", {
+        x1: margin.left,
+        x2: margin.left + innerWidth,
+        y1: avgY,
+        y2: avgY,
+        stroke: "#9aa8b2",
+        "stroke-width": 1,
+        "stroke-dasharray": "5 5",
+      }),
+    );
+    appendText(svg, `Avg ${metric.formatter(avg)}`, margin.left + innerWidth - 4, avgY - 7, "axis-label", "end");
+
+    points.forEach((point) => {
+      svg.append(
+        svgEl("circle", {
+          class: "chart-point",
+          cx: xScaleValue(point.year, yearMin, yearMax, margin.left, innerWidth),
+          cy: yScaleValue(point.value, yScaleInfo.min, yScaleInfo.max, margin.top, innerHeight),
+          r: 4,
+          fill: "#0f766e",
+          opacity: 0.82,
+          "data-tooltip": `${point.season.label}|${metric.label}: ${metric.formatter(point.value)}|Champion: ${point.season.champion.team} (${point.season.championPoints} pts)|${point.season.matchCount} matches`,
+        }),
+      );
+    });
+  }
+
+  function renderHistoryTeamChart() {
+    const svg = els.historyTeamChart;
+    const team = state.historyTeam;
+    const metricKey = state.historyTeamMetric;
+    const metric = HISTORY_TEAM_METRICS[metricKey];
+    const seasons = historySeasonsInRange();
+    const points = seasons
+      .map((season) => {
+        const row = season.byTeam.get(team);
+        return row ? { season, year: season.year, row, value: historyTeamMetricValue(row, metricKey) } : null;
+      })
+      .filter(Boolean);
+    els.historyTeamChartTitle.textContent = `${team}: ${metric.label}`;
+
+    const { width, height } = chartBox(svg, CHART.width, CHART.height);
+    const margin = { top: 24, right: 28, bottom: 46, left: 52 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    clearSVG(svg, width, height);
+    if (points.length < 2) {
+      appendText(svg, `${team} has fewer than two top-flight seasons in this range.`, width / 2, height / 2, "axis-label", "middle");
+      return;
+    }
+
+    const yearMin = seasons[0].year;
+    const yearMax = seasons[seasons.length - 1].year;
+    const color = teamColor(team);
+    const isPosition = metricKey === "position";
+    const yScaleInfo = isPosition ? null : niceLinearScale(Math.min(0, ...points.map((point) => point.value)), Math.max(...points.map((point) => point.value)));
+    const yFor = (value) =>
+      isPosition
+        ? yScalePosition(value, 20, margin.top, innerHeight)
+        : yScaleValue(value, yScaleInfo.min, yScaleInfo.max, margin.top, innerHeight);
+
+    drawGrid(svg, {
+      width,
+      height,
+      margin,
+      xTicks: historyYearTicks(seasons),
+      yTicks: isPosition ? positionTicks(20) : yScaleInfo.ticks,
+      xScale: (year) => xScaleValue(year, yearMin, yearMax, margin.left, innerWidth),
+      yScale: yFor,
+      yFormatter: isPosition ? (value) => `#${value}` : metric.formatter,
+    });
+    appendText(svg, "Season start year", width / 2, height - 10, "axis-label", "middle");
+    appendText(svg, metric.label, 14, margin.top + innerHeight / 2, "axis-label", "middle", -90);
+
+    const path = pathFromSeries(points, (point) => xScaleValue(point.year, yearMin, yearMax, margin.left, innerWidth), (point) => yFor(point.value));
+    svg.append(svgEl("path", { class: "chart-line", d: path, stroke: color, "stroke-width": 3, opacity: 0.94 }));
+
+    points.forEach((point) => {
+      svg.append(
+        svgEl("circle", {
+          class: "chart-point",
+          cx: xScaleValue(point.year, yearMin, yearMax, margin.left, innerWidth),
+          cy: yFor(point.value),
+          r: 4,
+          fill: color,
+          opacity: 0.82,
+          "data-tooltip": `${team} · ${point.season.label}|${metric.label}: ${metric.formatter(point.value)}|#${point.row.position}, ${point.row.points} pts, ${signed(point.row.gd)} GD|${point.row.gf} GF, ${point.row.ga} GA`,
+        }),
+      );
+    });
+  }
+
+  function renderTitleWinnersChart() {
+    const svg = els.titleWinnersChart;
+    const seasons = historySeasonsInRange();
+    const rows = historyTitleCounts(seasons);
+    const { width, height } = chartBox(svg, CHART.width, CHART.height);
+    const margin = { top: 18, right: 48, bottom: 28, left: width < 620 ? 118 : 150 };
+    const innerWidth = width - margin.left - margin.right;
+    const rowHeight = Math.max(22, (height - margin.top - margin.bottom) / Math.max(1, rows.length));
+    const maxValue = Math.max(1, ...rows.map((row) => row.count));
+
+    clearSVG(svg, width, height);
+    if (!rows.length) {
+      appendText(svg, "No title data in this range.", width / 2, height / 2, "axis-label", "middle");
+      return;
+    }
+
+    rows.forEach((row, index) => {
+      const y = margin.top + index * rowHeight;
+      const barWidth = (row.count / maxValue) * innerWidth;
+      appendText(svg, row.team, margin.left - 9, y + rowHeight * 0.64, "axis-label", "end");
+      svg.append(
+        svgEl("rect", {
+          x: margin.left,
+          y: y + rowHeight * 0.2,
+          width: Math.max(3, barWidth),
+          height: Math.max(12, rowHeight * 0.6),
+          rx: 4,
+          fill: teamColor(row.team),
+          opacity: 0.88,
+          "data-tooltip": `${row.team}|${row.count} title${row.count === 1 ? "" : "s"}|${row.seasons.join(", ")}`,
+        }),
+      );
+      appendText(svg, row.count, margin.left + barWidth + 7, y + rowHeight * 0.64, "axis-label", "start");
+    });
+  }
+
+  function renderHistoryComparison() {
+    if (!state.history) return;
+    const seasonA = state.history.byYear.get(state.historyCompareA);
+    const seasonB = state.history.byYear.get(state.historyCompareB);
+    if (!seasonA || !seasonB) {
+      els.historyComparison.innerHTML = `<div class="empty-state">Pick two loaded seasons to compare.</div>`;
+      return;
+    }
+
+    const statRows = [
+      { label: "Goals/match", value: (season) => season.goalsPerMatch, formatter: (value) => value.toFixed(2) },
+      { label: "Champion pts", value: (season) => season.championPoints, formatter: (value) => value.toFixed(0) },
+      { label: "Title margin", value: (season) => season.titleMargin, formatter: (value) => value.toFixed(0) },
+      { label: "Top-four cutoff", value: (season) => season.topFourCutoff, formatter: (value) => value.toFixed(0) },
+      { label: "17th pts", value: (season) => season.survivalPoints, formatter: (value) => value.toFixed(0) },
+      { label: "Home win rate", value: (season) => season.homeWinRate, formatter: (value) => `${value.toFixed(0)}%` },
+    ];
+
+    els.historyComparison.innerHTML = `
+      <div class="history-season-cards">
+        ${[seasonA, seasonB]
+          .map(
+            (season) => `
+              <article class="history-season-card" style="--team-color: ${teamColor(season.champion.team)}">
+                <span>${escapeHTML(season.label)}</span>
+                <strong>${escapeHTML(season.champion.team)}</strong>
+                <small>${season.championPoints} pts champion · ${season.goalsPerMatch.toFixed(2)} goals/match</small>
+              </article>
+            `,
+          )
+          .join("")}
+      </div>
+      <div class="history-delta-grid">
+        ${statRows
+          .map((row) => {
+            const aValue = row.value(seasonA);
+            const bValue = row.value(seasonB);
+            return `
+              <div class="history-delta-row">
+                <span>${escapeHTML(row.label)}</span>
+                <strong>${escapeHTML(formatDelta(aValue - bValue, row.formatter))}</strong>
+                <small>${escapeHTML(row.formatter(aValue))} vs ${escapeHTML(row.formatter(bValue))}</small>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  function renderChampionsTimeline() {
+    const seasons = historySeasonsInRange();
+    els.championsTimeline.innerHTML = seasons
+      .map(
+        (season) => `
+          <article class="champion-tile" style="--team-color: ${teamColor(season.champion.team)}">
+            <span>${escapeHTML(season.label)}</span>
+            <strong>${escapeHTML(season.champion.team)}</strong>
+            <small>${season.championPoints} pts · +${season.titleMargin}</small>
+          </article>
+        `,
+      )
+      .join("");
   }
 
   function renderSeasonKpis() {
@@ -1882,6 +2537,30 @@
       .map((row) => row.team);
   }
 
+  function historySeasonsInRange() {
+    if (!state.history) return [];
+    const start = Math.min(state.historyStart, state.historyEnd);
+    const end = Math.max(state.historyStart, state.historyEnd);
+    return state.history.seasons.filter((season) => season.year >= start && season.year <= end);
+  }
+
+  function historyTitleCounts(seasons) {
+    const counts = new Map();
+    seasons.forEach((season) => {
+      const team = season.champion.team;
+      if (!counts.has(team)) counts.set(team, { team, count: 0, seasons: [] });
+      const row = counts.get(team);
+      row.count += 1;
+      row.seasons.push(season.label);
+    });
+    return [...counts.values()].sort((a, b) => b.count - a.count || a.team.localeCompare(b.team));
+  }
+
+  function historyTeamMetricValue(row, key) {
+    if (key === "pointsPerMatch") return row.played ? row.points / row.played : 0;
+    return Number(row[key]) || 0;
+  }
+
   function filteredPlayers() {
     if (!state.players) return [];
     const search = state.playerSearch;
@@ -1982,8 +2661,12 @@
 
   function teamColor(team) {
     if (TEAM_COLORS[team]) return TEAM_COLORS[team];
-    const index = state.data ? state.data.teams.indexOf(team) : 0;
-    return FALLBACK_COLORS[Math.max(0, index) % FALLBACK_COLORS.length];
+    const teamLists = [state.data?.teams || [], state.history?.teams || []];
+    for (const teams of teamLists) {
+      const index = teams.indexOf(team);
+      if (index >= 0) return FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+    }
+    return FALLBACK_COLORS[hashString(team) % FALLBACK_COLORS.length];
   }
 
   function toggleTeam(team) {
@@ -2037,6 +2720,16 @@
     return [1, 5, 10, 15, teamCount].filter((value, index, arr) => value <= teamCount && arr.indexOf(value) === index);
   }
 
+  function historyYearTicks(seasons) {
+    if (!seasons.length) return [];
+    const minYear = seasons[0].year;
+    const maxYear = seasons[seasons.length - 1].year;
+    const ticks = new Set([minYear, maxYear]);
+    const firstFive = Math.ceil(minYear / 5) * 5;
+    for (let year = firstFive; year < maxYear; year += 5) ticks.add(year);
+    return [...ticks].sort((a, b) => a - b);
+  }
+
   function valueTicks(min, max) {
     const ticks = [];
     const span = max - min;
@@ -2054,6 +2747,29 @@
       ticks.push(Number(value.toFixed(2)));
     }
     return ticks;
+  }
+
+  function niceLinearScale(min, max, targetTickCount = 5) {
+    let lower = Number.isFinite(min) ? min : 0;
+    let upper = Number.isFinite(max) ? max : 1;
+    if (lower === upper) {
+      lower = Math.min(0, lower - 1);
+      upper += 1;
+    }
+    const span = upper - lower;
+    const rawStep = span / Math.max(1, targetTickCount);
+    const power = 10 ** Math.floor(Math.log10(rawStep || 1));
+    const factor = rawStep / power;
+    const niceFactor = factor <= 1 ? 1 : factor <= 2 ? 2 : factor <= 5 ? 5 : 10;
+    const step = niceFactor * power;
+    const niceMin = Math.floor(lower / step) * step;
+    const niceMax = Math.ceil(upper / step) * step;
+    const precision = Math.max(0, Math.ceil(-Math.log10(step)) + 2);
+    const ticks = [];
+    for (let value = niceMin; value <= niceMax + step / 2; value += step) {
+      ticks.push(Number(value.toFixed(precision)));
+    }
+    return { min: niceMin, max: niceMax, ticks };
   }
 
   function niceDomain(min, max) {
@@ -2085,7 +2801,7 @@
   }
 
   function toNumber(value) {
-    const number = Number(value);
+    const number = Number(String(value || "").replace(/,/g, ""));
     return Number.isFinite(number) ? number : 0;
   }
 
@@ -2093,8 +2809,19 @@
     return minutes > 0 ? (value * 90) / minutes : 0;
   }
 
+  function average(values) {
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  }
+
   function signed(value) {
     return value > 0 ? `+${value}` : String(value);
+  }
+
+  function formatDelta(value, formatter) {
+    const absolute = formatter(Math.abs(value));
+    if (value > 0) return `+${absolute}`;
+    if (value < 0) return `-${absolute}`;
+    return formatter(0);
   }
 
   function signedDecimal(value) {
@@ -2114,6 +2841,16 @@
   function formatShortDate(date) {
     if (!date) return "n/a";
     return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" }).format(date);
+  }
+
+  function seasonOption(season) {
+    return `<option value="${season.year}">${escapeHTML(season.label)}</option>`;
+  }
+
+  function hashString(value) {
+    return String(value)
+      .split("")
+      .reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 0);
   }
 
   function formBadges(form) {
@@ -2159,7 +2896,7 @@
   function showLoadError(error) {
     els.loadError.hidden = false;
     els.loadError.innerHTML = `
-      <strong>Could not load ${CSV_FILE}.</strong>
+      <strong>Could not load dashboard data.</strong>
       <div>${escapeHTML(error.message)}</div>
       <div>For local preview, run <code>python3 -m http.server 8080</code> in this folder and open <code>http://localhost:8080</code>.</div>
     `;

@@ -8,7 +8,7 @@
       name="description"
       content="Static Premier League season dashboard built from the Football-Data E0.csv file."
     >
-    <link rel="stylesheet" href="styles.css?v=20260522-player-filters">
+    <link rel="stylesheet" href="styles.css?v=20260522-history">
   </head>
   <body>
     <noscript>
@@ -36,6 +36,10 @@
         <button class="tab-button tab-button-feature" type="button" data-tab="players" aria-controls="playersPanel">
           <span>Players</span>
           <span class="tab-badge">Player stats</span>
+        </button>
+        <button class="tab-button tab-button-feature" type="button" data-tab="history" aria-controls="historyPanel">
+          <span>History</span>
+          <span class="tab-badge">2000-25</span>
         </button>
       </nav>
 
@@ -414,6 +418,145 @@
         </section>
       </main>
 
+      <main class="dashboard-layout tab-panel" id="historyPanel" data-tab-panel="history" hidden>
+        <aside class="control-panel" aria-label="Historical dashboard controls">
+          <section class="panel-block">
+            <div class="section-heading">
+              <span class="section-kicker">Era</span>
+              <h2>Seasons</h2>
+            </div>
+            <div class="number-grid">
+              <label class="field-label" for="historyStartSeason">
+                From
+                <select id="historyStartSeason" class="metric-select"></select>
+              </label>
+              <label class="field-label" for="historyEndSeason">
+                To
+                <select id="historyEndSeason" class="metric-select"></select>
+              </label>
+            </div>
+
+            <label class="field-label" for="historyMetricSelect">Season trend</label>
+            <select id="historyMetricSelect" class="metric-select">
+              <option value="goalsPerMatch">Goals per match</option>
+              <option value="homeWinRate">Home win rate</option>
+              <option value="drawRate">Draw rate</option>
+              <option value="awayWinRate">Away win rate</option>
+              <option value="cardsPerMatch">Cards per match</option>
+              <option value="championPoints">Champion points</option>
+              <option value="titleMargin">Title margin</option>
+              <option value="topFourCutoff">Top-four cutoff</option>
+              <option value="survivalPoints">17th-place points</option>
+              <option value="avgAttendance">Average attendance</option>
+            </select>
+          </section>
+
+          <section class="panel-block">
+            <div class="section-heading">
+              <span class="section-kicker">Club arc</span>
+              <h2>Team</h2>
+            </div>
+            <label class="field-label" for="historyTeamSelect">Track club</label>
+            <select id="historyTeamSelect" class="metric-select"></select>
+            <label class="field-label" for="historyTeamMetricSelect">Club metric</label>
+            <select id="historyTeamMetricSelect" class="metric-select">
+              <option value="position">Final position</option>
+              <option value="points">Points</option>
+              <option value="gd">Goal difference</option>
+              <option value="gf">Goals scored</option>
+              <option value="ga">Goals conceded</option>
+              <option value="pointsPerMatch">Points per match</option>
+            </select>
+          </section>
+
+          <section class="panel-block">
+            <div class="section-heading">
+              <span class="section-kicker">Compare</span>
+              <h2>Two seasons</h2>
+            </div>
+            <div class="number-grid">
+              <label class="field-label" for="historyCompareA">
+                Season A
+                <select id="historyCompareA" class="metric-select"></select>
+              </label>
+              <label class="field-label" for="historyCompareB">
+                Season B
+                <select id="historyCompareB" class="metric-select"></select>
+              </label>
+            </div>
+            <p class="control-note">
+              Full seasons from Football-Data files named <code>plYYYY.csv</code>, where YYYY is the season start year.
+            </p>
+          </section>
+        </aside>
+
+        <section class="content-column">
+          <section class="history-kpis" id="historyKpis" aria-live="polite">
+            <div class="kpi-card is-loading">Loading historical CSVs...</div>
+          </section>
+
+          <div class="chart-grid">
+            <section class="chart-panel">
+              <div class="chart-header compact">
+                <div>
+                  <p class="section-kicker">League evolution</p>
+                  <h2 id="historyMetricTitle">Goals per match</h2>
+                </div>
+              </div>
+              <div class="chart-frame">
+                <svg id="historyMetricChart" role="img" aria-label="Historical Premier League metric trend"></svg>
+              </div>
+            </section>
+
+            <section class="chart-panel">
+              <div class="chart-header compact">
+                <div>
+                  <p class="section-kicker">Club arc</p>
+                  <h2 id="historyTeamChartTitle">Team over time</h2>
+                </div>
+              </div>
+              <div class="chart-frame">
+                <svg id="historyTeamChart" role="img" aria-label="Historical team performance over time"></svg>
+              </div>
+            </section>
+          </div>
+
+          <div class="chart-grid">
+            <section class="chart-panel">
+              <div class="chart-header compact">
+                <div>
+                  <p class="section-kicker">Dynasties</p>
+                  <h2>Titles by club</h2>
+                </div>
+              </div>
+              <div class="chart-frame">
+                <svg id="titleWinnersChart" role="img" aria-label="Premier League titles by club"></svg>
+              </div>
+            </section>
+
+            <section class="chart-panel">
+              <div class="chart-header compact">
+                <div>
+                  <p class="section-kicker">Season compare</p>
+                  <h2>What changed?</h2>
+                </div>
+              </div>
+              <div id="historyComparison" class="history-comparison"></div>
+            </section>
+          </div>
+
+          <section class="chart-panel">
+            <div class="chart-header compact">
+              <div>
+                <p class="section-kicker">Champions timeline</p>
+                <h2>Who owned each era?</h2>
+              </div>
+            </div>
+            <div id="championsTimeline" class="champions-timeline"></div>
+          </section>
+        </section>
+      </main>
+
       <footer class="site-footer" aria-label="Data credits">
         <span>Data credits:</span>
         <a href="https://www.football-data.co.uk/" target="_blank" rel="noopener noreferrer">Football-Data.co.uk</a>
@@ -425,6 +568,6 @@
     <div id="tooltip" class="tooltip" hidden></div>
     <div id="loadError" class="load-error" hidden></div>
 
-    <script src="app.js?v=20260522-player-filters" defer></script>
+    <script src="app.js?v=20260522-history" defer></script>
   </body>
 </html>
