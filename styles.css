@@ -244,6 +244,7 @@ button {
 }
 
 .search-input,
+.number-input,
 .metric-select {
   width: 100%;
   height: 42px;
@@ -256,12 +257,28 @@ button {
 }
 
 .search-input:focus,
+.number-input:focus,
 .metric-select:focus,
 .range-input:focus-visible,
 .small-button:focus-visible,
 .team-chip:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.16);
+}
+
+.number-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.number-grid .field-label {
+  margin-bottom: 0;
+}
+
+.number-input {
+  display: block;
+  margin-top: 7px;
 }
 
 .quick-actions {

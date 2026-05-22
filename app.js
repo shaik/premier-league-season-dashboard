@@ -138,6 +138,8 @@
     playerTeam: "all",
     playerPosition: "all",
     playerSearch: "",
+    playerMinMinutes: 90,
+    playerMinAppearances: 1,
     playerMetric: "goalsAssistsSum",
     playerTableSort: { key: "metric", direction: "desc" },
     selectedPlayers: new Set(),
@@ -217,6 +219,8 @@
     els.playerTeamFilter = document.getElementById("playerTeamFilter");
     els.playerPositionFilter = document.getElementById("playerPositionFilter");
     els.playerSearch = document.getElementById("playerSearch");
+    els.playerMinMinutes = document.getElementById("playerMinMinutes");
+    els.playerMinAppearances = document.getElementById("playerMinAppearances");
     els.playerMetricSelect = document.getElementById("playerMetricSelect");
     els.selectTopPlayers = document.getElementById("selectTopPlayers");
     els.selectVisiblePlayers = document.getElementById("selectVisiblePlayers");
@@ -291,8 +295,19 @@
 
     els.playerSearch.addEventListener("input", (event) => {
       state.playerSearch = event.target.value.trim().toLowerCase();
-      renderPlayerSelector();
-      renderPlayerTable();
+      renderPlayerDashboard();
+    });
+
+    els.playerMinMinutes.addEventListener("input", (event) => {
+      state.playerMinMinutes = Math.max(0, Number(event.target.value) || 0);
+      refreshPlayerSelectionForFilter();
+      renderPlayerDashboard();
+    });
+
+    els.playerMinAppearances.addEventListener("input", (event) => {
+      state.playerMinAppearances = Math.max(0, Number(event.target.value) || 0);
+      refreshPlayerSelectionForFilter();
+      renderPlayerDashboard();
     });
 
     els.playerMetricSelect.addEventListener("change", (event) => {
@@ -338,6 +353,8 @@
     els.roundMaxLabel.textContent = `Round ${data.maxRound}`;
     els.metricSelect.value = state.metric;
     els.playerMetricSelect.value = state.playerMetric;
+    els.playerMinMinutes.value = String(state.playerMinMinutes);
+    els.playerMinAppearances.value = String(state.playerMinAppearances);
     els.playerTeamFilter.innerHTML = [
       `<option value="all">All teams</option>`,
       ...data.teams.map((team) => `<option value="${escapeAttr(team)}">${escapeHTML(team)}</option>`),
@@ -1375,7 +1392,7 @@
       {
         label: "Players in view",
         value: players.length,
-        detail: `${selectedText}, ${state.playerPosition === "all" ? "all positions" : POSITION_LABELS[state.playerPosition]}`,
+        detail: `${selectedText}, ${state.playerPosition === "all" ? "all positions" : POSITION_LABELS[state.playerPosition]} · ${state.playerMinMinutes}+ min, ${state.playerMinAppearances}+ app`,
       },
       {
         label: `Top ${metric.label}`,
@@ -1872,6 +1889,8 @@
       .filter((player) => state.playerTeam === "all" || player.team === state.playerTeam)
       .filter((player) => state.playerPosition === "all" || player.position === state.playerPosition)
       .filter((player) => !search || player.name.toLowerCase().includes(search) || player.team.toLowerCase().includes(search))
+      .filter((player) => player.minutesPlayed >= state.playerMinMinutes)
+      .filter((player) => player.appearances >= state.playerMinAppearances)
       .sort(playerComparator(state.playerMetric));
   }
 
