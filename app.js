@@ -1,9 +1,9 @@
 (function () {
   "use strict";
 
-  const CSV_FILE = "E0.csv";
+  const CSV_FILE = "pl2025.csv";
   const PLAYER_CSV_FILE = "premier_league_complete_stats_until35thGameDayOnSeason2025-26.csv";
-  const HISTORY_FILES = Array.from({ length: 25 }, (_, index) => {
+  const HISTORY_FILES = Array.from({ length: 26 }, (_, index) => {
     const year = 2000 + index;
     return {
       year,
@@ -371,6 +371,9 @@
     els.historyTeamChart = document.getElementById("historyTeamChart");
     els.titleWinnersChart = document.getElementById("titleWinnersChart");
     els.historyComparison = document.getElementById("historyComparison");
+    els.leagueGoalsChart = document.getElementById("leagueGoalsChart");
+    els.goalsSplitChart = document.getElementById("goalsSplitChart");
+    els.goalsVerdict = document.getElementById("goalsVerdict");
     els.championsTimeline = document.getElementById("championsTimeline");
     els.tooltip = document.getElementById("tooltip");
     els.loadError = document.getElementById("loadError");
@@ -1149,12 +1152,15 @@
     if (!state.history) return;
     renderHistoryKpis();
     renderHistoryCharts();
+    renderGoalsVerdict();
     renderHistoryComparison();
     renderChampionsTimeline();
   }
 
   function renderHistoryCharts() {
     if (!state.history) return;
+    renderLeagueGoalsChart();
+    renderGoalsSplitChart();
     renderHistoryMetricChart();
     renderHistoryTeamChart();
     renderTitleWinnersChart();
@@ -1451,6 +1457,213 @@
         `,
       )
       .join("");
+  }
+
+  function renderLeagueGoalsChart() {
+    const svg = els.leagueGoalsChart;
+    if (!svg) return;
+    const series = goalsTrendSeries();
+    const { width, height } = chartBox(svg, CHART.width, CHART.height);
+    const margin = { top: 28, right: 24, bottom: 52, left: 62 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    clearSVG(svg, width, height);
+    if (series.length < 2) {
+      appendText(svg, "Not enough seasons to chart league scoring.", width / 2, height / 2, "axis-label", "middle");
+      return;
+    }
+
+    const maxValue = Math.max(...series.map((point) => Math.max(point.totalGoals, point.projectedGoals)));
+    const yScaleInfo = niceLinearScale(0, maxValue);
+    const yFor = (value) => yScaleValue(value, yScaleInfo.min, yScaleInfo.max, margin.top, innerHeight);
+    const baseY = margin.top + innerHeight;
+
+    yScaleInfo.ticks.forEach((tick) => {
+      const y = yFor(tick);
+      svg.append(svgEl("line", { class: "grid-line", x1: margin.left, x2: margin.left + innerWidth, y1: y, y2: y }));
+      appendText(svg, String(Math.round(tick)), margin.left - 10, y + 4, "axis-label", "end");
+    });
+    svg.append(svgEl("line", { class: "axis-line", x1: margin.left, x2: margin.left, y1: margin.top, y2: baseY }));
+    svg.append(svgEl("line", { class: "axis-line", x1: margin.left, x2: margin.left + innerWidth, y1: baseY, y2: baseY }));
+    appendText(svg, "Total goals scored leaguewide", 14, margin.top + innerHeight / 2, "axis-label", "middle", -90);
+    if (series.some((point) => point.partial)) {
+      appendText(svg, "Dashed cap = current season on full-season pace", margin.left + innerWidth, margin.top - 12, "axis-label", "end");
+    }
+
+    const latestYear = series[series.length - 1].year;
+    const slot = innerWidth / series.length;
+    const barWidth = Math.max(4, slot * 0.66);
+
+    series.forEach((point, index) => {
+      const isLatest = point.year === latestYear;
+      const cx = margin.left + (index + 0.5) * slot;
+      const x = cx - barWidth / 2;
+      const color = isLatest ? "#e11d48" : "#0f766e";
+      const y = yFor(point.totalGoals);
+
+      if (point.partial && point.projectedGoals > point.totalGoals) {
+        const projY = yFor(point.projectedGoals);
+        svg.append(
+          svgEl("rect", {
+            x,
+            y: projY,
+            width: barWidth,
+            height: Math.max(0, baseY - projY),
+            rx: 3,
+            fill: "none",
+            stroke: color,
+            "stroke-width": 1.4,
+            "stroke-dasharray": "4 4",
+            opacity: 0.7,
+            "data-tooltip": `${point.label} · on pace|≈${Math.round(point.projectedGoals)} goals over a full season|${point.goalsPerMatch.toFixed(2)} per match so far|${point.matchCount}/${point.fullMatches} matches played`,
+          }),
+        );
+      }
+
+      svg.append(
+        svgEl("rect", {
+          class: "chart-point",
+          x,
+          y,
+          width: barWidth,
+          height: Math.max(1, baseY - y),
+          rx: 3,
+          fill: color,
+          opacity: point.partial ? 0.92 : 0.82,
+          "data-tooltip": `${point.label}${point.partial ? " (in progress)" : ""}|${point.totalGoals} goals|${point.goalsPerMatch.toFixed(2)} per match|Champion: ${point.champion}`,
+        }),
+      );
+
+      if (isLatest || index === 0 || point.year % 5 === 0) {
+        appendText(svg, String(point.year), cx, baseY + 18, "axis-label", "middle");
+      }
+    });
+  }
+
+  function renderGoalsSplitChart() {
+    const svg = els.goalsSplitChart;
+    if (!svg) return;
+    const series = goalsTrendSeries();
+    const { width, height } = chartBox(svg, CHART.width, CHART.height);
+    const margin = { top: 36, right: 30, bottom: 48, left: 54 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    clearSVG(svg, width, height);
+    if (series.length < 2) {
+      appendText(svg, "Not enough seasons to compare.", width / 2, height / 2, "axis-label", "middle");
+      return;
+    }
+
+    const yearMin = series[0].year;
+    const yearMax = series[series.length - 1].year;
+    const latestYear = yearMax;
+    const maxValue = Math.max(...series.map((point) => Math.max(point.arsenalPerGame, point.restPerGame)));
+    const yScaleInfo = niceLinearScale(0, maxValue);
+    const xFor = (year) => xScaleValue(year, yearMin, yearMax, margin.left, innerWidth);
+    const yFor = (value) => yScaleValue(value, yScaleInfo.min, yScaleInfo.max, margin.top, innerHeight);
+
+    drawGrid(svg, {
+      width,
+      height,
+      margin,
+      xTicks: yearTicksFor(yearMin, yearMax),
+      yTicks: yScaleInfo.ticks,
+      xScale: xFor,
+      yScale: yFor,
+      yFormatter: (value) => value.toFixed(1),
+    });
+    appendText(svg, "Season start year", width / 2, height - 10, "axis-label", "middle");
+    appendText(svg, "Goals scored per game", 14, margin.top + innerHeight / 2, "axis-label", "middle", -90);
+
+    const lines = [
+      { key: "restPerGame", label: "Rest of league (avg club)", color: "#64748b", dash: "6 4" },
+      { key: "arsenalPerGame", label: "Arsenal", color: teamColor("Arsenal"), dash: null },
+    ];
+
+    let legendX = margin.left;
+    lines.forEach((line) => {
+      svg.append(
+        svgEl("line", {
+          x1: legendX,
+          x2: legendX + 22,
+          y1: 16,
+          y2: 16,
+          stroke: line.color,
+          "stroke-width": 3,
+          "stroke-dasharray": line.dash || "0",
+        }),
+      );
+      appendText(svg, line.label, legendX + 28, 20, "axis-label", "start");
+      legendX += line.label.length * 6.6 + 60;
+    });
+
+    lines.forEach((line) => {
+      const path = pathFromSeries(series, (point) => xFor(point.year), (point) => yFor(point[line.key]));
+      const attrs = { class: "chart-line", d: path, stroke: line.color, "stroke-width": 3, opacity: 0.94 };
+      if (line.dash) attrs["stroke-dasharray"] = line.dash;
+      svg.append(svgEl("path", attrs));
+
+      series.forEach((point) => {
+        const isCurrent = point.year === latestYear;
+        svg.append(
+          svgEl("circle", {
+            class: "chart-point",
+            cx: xFor(point.year),
+            cy: yFor(point[line.key]),
+            r: isCurrent ? 5.5 : 3.4,
+            fill: line.color,
+            stroke: isCurrent ? "#172026" : "#ffffff",
+            "stroke-width": isCurrent ? 1.6 : 0.8,
+            opacity: 0.9,
+            "data-tooltip": `${line.label} · ${point.label}|${point[line.key].toFixed(2)} goals per game|League: ${point.goalsPerMatch.toFixed(2)} per match|Champion: ${point.champion}`,
+          }),
+        );
+      });
+    });
+  }
+
+  function renderGoalsVerdict() {
+    if (!els.goalsVerdict) return;
+    const series = goalsTrendSeries();
+    const current = series[series.length - 1];
+    if (!current) {
+      els.goalsVerdict.innerHTML = "";
+      return;
+    }
+
+    const priorFull = series.filter((point) => !point.partial && point.year < current.year);
+    const recent = priorFull.slice(-5);
+    const recentAvg = recent.length ? average(recent.map((point) => point.goalsPerMatch)) : current.goalsPerMatch;
+    const leagueDelta = current.goalsPerMatch - recentAvg;
+    const arsVsRest = current.arsenalPerGame - current.restPerGame;
+
+    const leaguePhrase =
+      leagueDelta <= -0.08
+        ? `down on the ${recentAvg.toFixed(2)} averaged across the previous five seasons — scoring has cooled leaguewide`
+        : leagueDelta >= 0.08
+          ? `up on the ${recentAvg.toFixed(2)} averaged across the previous five seasons — scoring is actually higher than recent years`
+          : `right in line with the ${recentAvg.toFixed(2)} of the previous five seasons`;
+
+    const arsPhrase =
+      arsVsRest >= 0
+        ? `still out-scored the average rival club (${current.restPerGame.toFixed(2)} per game), so the champions are not the ones dragging the numbers down`
+        : `scored fewer than the average rival club (${current.restPerGame.toFixed(2)} per game) — a genuinely blunt title win`;
+
+    const verdict =
+      leagueDelta <= -0.08 && arsVsRest >= 0
+        ? "Verdict: a leaguewide dip, not a boring Arsenal."
+        : arsVsRest < 0
+          ? "Verdict: Arsenal really were the boring ones."
+          : "Verdict: scoring held up — the low points haul came from a tight, evenly-matched race.";
+
+    els.goalsVerdict.innerHTML = `
+      In <strong>${escapeHTML(current.label)}</strong> the league is averaging
+      <strong>${current.goalsPerMatch.toFixed(2)}</strong> goals per match, ${escapeHTML(leaguePhrase)}.
+      Arsenal themselves managed <strong>${current.arsenalPerGame.toFixed(2)}</strong> goals per game and
+      ${escapeHTML(arsPhrase)}. <strong>${escapeHTML(verdict)}</strong>
+    `;
   }
 
   function renderSeasonKpis() {
@@ -2559,6 +2772,91 @@
   function historyTeamMetricValue(row, key) {
     if (key === "pointsPerMatch") return row.played ? row.points / row.played : 0;
     return Number(row[key]) || 0;
+  }
+
+  function currentSeasonMeta() {
+    const date = state.data?.firstDate || state.data?.lastDate;
+    let year = new Date().getFullYear();
+    if (date) {
+      year = date.getMonth() >= 6 ? date.getFullYear() : date.getFullYear() - 1;
+    }
+    return { year, label: `${year}-${String((year + 1) % 100).padStart(2, "0")}` };
+  }
+
+  function makeGoalsPoint(input) {
+    const matchCount = Math.max(1, input.matchCount);
+    const fullMatches = Math.max(matchCount, input.fullMatches || matchCount);
+    const teamGames = matchCount * 2;
+    const restGames = Math.max(1, teamGames - input.arsenalGames);
+    const restGoals = Math.max(0, input.totalGoals - input.arsenalGF);
+    return {
+      year: input.year,
+      label: input.label,
+      champion: input.champion,
+      partial: Boolean(input.partial),
+      totalGoals: input.totalGoals,
+      matchCount: input.matchCount,
+      fullMatches,
+      projectedGoals: input.partial ? (input.totalGoals / matchCount) * fullMatches : input.totalGoals,
+      goalsPerMatch: input.totalGoals / matchCount,
+      arsenalGF: input.arsenalGF,
+      arsenalGames: input.arsenalGames,
+      arsenalPerGame: input.arsenalGames ? input.arsenalGF / input.arsenalGames : 0,
+      restPerGame: restGoals / restGames,
+    };
+  }
+
+  // Full league-scoring timeline: the 25 historical seasons plus the live one,
+  // each split into Arsenal vs the rest so we can see if a low title points haul
+  // reflects a leaguewide scoring dip or just a blunt Arsenal.
+  function goalsTrendSeries() {
+    const byYear = new Map();
+    (state.history?.seasons || []).forEach((season) => {
+      const arsenal = season.byTeam.get("Arsenal");
+      byYear.set(
+        season.year,
+        makeGoalsPoint({
+          year: season.year,
+          label: season.label,
+          champion: season.champion.team,
+          totalGoals: season.totalGoals,
+          matchCount: season.matchCount,
+          arsenalGF: arsenal ? arsenal.gf : 0,
+          arsenalGames: arsenal ? arsenal.played : 0,
+          fullMatches: Math.max(1, season.teams.length * (season.teams.length - 1)),
+        }),
+      );
+    });
+    if (state.data) {
+      const meta = currentSeasonMeta();
+      const arsenal = state.data.latestStandings.find((row) => row.team === "Arsenal");
+      const champion = state.data.latestStandings[0];
+      const teamCount = state.data.teams.length;
+      const fullMatches = Math.max(1, teamCount * (teamCount - 1));
+      const point = makeGoalsPoint({
+        year: meta.year,
+        label: meta.label,
+        champion: champion ? champion.team : "n/a",
+        totalGoals: state.data.totalGoals,
+        matchCount: state.data.matches.length,
+        arsenalGF: arsenal ? arsenal.gf : 0,
+        arsenalGames: arsenal ? arsenal.played : 0,
+        partial: state.data.matches.length < fullMatches,
+        fullMatches,
+      });
+      // The featured season may also be loaded as a history file; keep whichever
+      // source has more matches so a mid-season snapshot never hides a full one.
+      const existing = byYear.get(meta.year);
+      if (!existing || point.matchCount > existing.matchCount) byYear.set(meta.year, point);
+    }
+    return [...byYear.values()].sort((a, b) => a.year - b.year);
+  }
+
+  function yearTicksFor(min, max) {
+    const ticks = new Set([min, max]);
+    const start = Math.ceil(min / 5) * 5;
+    for (let year = start; year < max; year += 5) ticks.add(year);
+    return [...ticks].sort((a, b) => a - b);
   }
 
   function filteredPlayers() {

@@ -6,9 +6,9 @@
     <title>Premier League Season Dashboard</title>
     <meta
       name="description"
-      content="Static Premier League season dashboard built from the Football-Data E0.csv file."
+      content="Static Premier League season dashboard built from Football-Data season files (2000-01 through 2025-26)."
     >
-    <link rel="stylesheet" href="styles.css?v=20260522-history">
+    <link rel="stylesheet" href="styles.css?v=20260526-goals">
   </head>
   <body>
     <noscript>
@@ -495,6 +495,31 @@
             <div class="kpi-card is-loading">Loading historical CSVs...</div>
           </section>
 
+          <section class="chart-panel">
+            <div class="chart-header compact">
+              <div>
+                <p class="section-kicker">The big question</p>
+                <h2>Total goals scored leaguewide per season</h2>
+              </div>
+            </div>
+            <div class="chart-frame">
+              <svg id="leagueGoalsChart" role="img" aria-label="Total Premier League goals scored per season, 2000-01 to the current season"></svg>
+            </div>
+          </section>
+
+          <section class="chart-panel">
+            <div class="chart-header compact">
+              <div>
+                <p class="section-kicker">A general trend, or just Arsenal?</p>
+                <h2>Is the whole league scoring less — or just Arsenal?</h2>
+              </div>
+            </div>
+            <div class="chart-frame">
+              <svg id="goalsSplitChart" role="img" aria-label="Arsenal goals per game compared with the rest of the league across seasons"></svg>
+            </div>
+            <p id="goalsVerdict" class="goals-verdict"></p>
+          </section>
+
           <div class="chart-grid">
             <section class="chart-panel">
               <div class="chart-header compact">
@@ -568,6 +593,6 @@
     <div id="tooltip" class="tooltip" hidden></div>
     <div id="loadError" class="load-error" hidden></div>
 
-    <script src="app.js?v=20260522-history" defer></script>
+    <script src="app.js?v=20260526-goals" defer></script>
   </body>
 </html>

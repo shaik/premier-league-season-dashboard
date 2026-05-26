@@ -396,6 +396,21 @@ button {
   line-height: 1.45;
 }
 
+.goals-verdict {
+  margin: 4px 20px 18px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  background: rgba(15, 118, 110, 0.07);
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.goals-verdict strong {
+  font-weight: 750;
+}
+
 .content-column {
   display: grid;
   gap: 18px;
